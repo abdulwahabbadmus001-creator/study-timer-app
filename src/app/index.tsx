@@ -1,98 +1,164 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect } from "react";
+import {
+  View,
+  StyleSheet,
+  Alert,
+  Text,
+  FlatList,
+} from "react-native";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+import TimerDisplay from "../components/TimerDisplay";
+import TimerControls from "../components/TimerControls";
+
+import { useTimerStore, Session } from "../store/timeStore";
+import { formatTime } from "../utils/formatTime";
 
 export default function HomeScreen() {
+  const {
+    timeLeft,
+    isRunning,
+    sessions,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    decrement,
+    addSession,
+    setSessions,
+  } = useTimerStore();
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const loadSessions = async () => {
+    try {
+      const data =
+        await AsyncStorage.getItem("sessions");
+
+      if (data) {
+        setSessions(JSON.parse(data));
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (isRunning && timeLeft > 0) {
+      interval = setInterval(() => {
+        decrement();
+      }, 1000);
+    }
+
+    if (timeLeft === 0) {
+      completeSession();
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isRunning, timeLeft]);
+
+  const completeSession = async () => {
+    const session: Session = {
+      id: Date.now(),
+      duration: 25,
+      completedAt:
+        new Date().toLocaleString(),
+    };
+
+    const updatedSessions = [
+      ...sessions,
+      session,
+    ];
+
+    addSession(session);
+
+    await AsyncStorage.setItem(
+      "sessions",
+      JSON.stringify(updatedSessions)
+    );
+
+    
+
+    Alert.alert(
+      "Session Complete",
+      "Great job! Your focus session is finished."
+    );
+
+    pauseTimer();
+  };
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <View style={styles.container}>
+      <Text style={styles.title}>
+        Study Timer
+      </Text>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      <TimerDisplay
+        time={formatTime(timeLeft)}
+      />
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      <TimerControls
+        onStart={startTimer}
+        onPause={pauseTimer}
+        onReset={resetTimer}
+      />
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <Text style={styles.historyTitle}>
+        Session History
+      </Text>
+
+      <FlatList
+        data={sessions}
+        keyExtractor={(item) =>
+          item.id.toString()
+        }
+        renderItem={({ item }) => (
+          <View style={styles.historyItem}>
+            <Text>
+              25 Minutes Focus Session
+            </Text>
+
+            <Text>
+              {item.completedAt}
+            </Text>
+          </View>
+        )}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+    padding: 20,
+    paddingTop: 60,
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
+
   title: {
-    textAlign: 'center',
+    fontSize: 30,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 20,
   },
-  code: {
-    textTransform: 'uppercase',
+
+  historyTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginTop: 30,
+    marginBottom: 10,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+
+  historyItem: {
+    padding: 10,
+    borderBottomWidth: 1,
   },
 });
